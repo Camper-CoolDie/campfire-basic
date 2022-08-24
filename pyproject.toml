@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=60.8.3", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "campfire-basic"
+version = "1.0.0"
+description = "Campfire API basic functions"
+authors = [
+    { name = "Camper-CoolDie", email = "campercooldie@gmail.com" }
+]
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Typing :: Typed"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/Camper-CoolDie/campfire-api"
+
+[project.optional-dependencies]
+notifications = [
+    "cryptography>=3.1",
+    "oscrypto",
+    "http_ece",
+    "protobuf"
+]

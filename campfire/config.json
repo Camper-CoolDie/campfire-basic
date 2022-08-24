@@ -1,0 +1,19 @@
+{
+    "client": {
+        "https": true,
+        "dataChunkSize": 2048,
+        "timeout": 5.0
+    },
+    "server": {
+        "ip": "46.254.16.245",
+        "portHttps": 4026,
+        "portHttp": 4028,
+        "hostname": "campfiresayzen.net"
+    },
+    "firebase": {
+        "apiKey": "AIzaSyACrbV2hnCsYZmdzAa7-8M5eaZUWYiXd5c",
+        "projectId": "campfire-2fb33",
+        "senderId": 276237287601,
+        "appId": "1:276237287601:android:cbd136978e8fc1ea"
+    }
+}

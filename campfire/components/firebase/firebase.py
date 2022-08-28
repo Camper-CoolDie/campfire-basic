@@ -1,12 +1,14 @@
+from typing import Union
 from threading import Thread, Event
 from hashlib import sha512
-from urllib.request import Request, urlopen
+from urllib.request import Request as _Request, urlopen
 from urllib.error import HTTPError
+import asyncio
 import time
 import json
 from ..config import Config
 from ..exceptions import ApiLoginException
-from ..request import _send_request
+from ..request import Request, _send_request
 
 FB_HOST = "identitytoolkit.googleapis.com"
 
@@ -33,7 +35,7 @@ class FirebaseLogin(Thread):
             }
             
             try:
-                resp = urlopen(Request(
+                resp = urlopen(_Request(
                     url = "https://" + FB_HOST + "/v1/accounts:signInWithPassword?key=" + Config.Firebase.api_key,
                     headers = headers,
                     data = body
@@ -64,9 +66,16 @@ class FirebaseLogin(Thread):
         
         return "Email2 - " + self._id_token
     
-    def send(self, request_name: str, body: dict = {}, data_output: tuple = ()) -> dict:
+    async def send(self, request: Union[tuple[Request], Request, str], body: dict = {}, data_output: tuple = ()) -> dict:
         """
-        Send a request.
+        Send request(s) asynchronously.
         """
         
-        return _send_request(request_name, body, data_output, self.token)
+        if isinstance(request, tuple):
+            tasks = []
+            for req in request:
+                task = asyncio.create_task(_send_request(req, token = self.token))
+                tasks.append(task)
+            return await asyncio.gather(*tasks)
+        else:
+            return await _send_request(request, body, data_output, self.token)

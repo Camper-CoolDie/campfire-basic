@@ -1,17 +1,27 @@
+from typing import Union
 from threading import Thread
+from contextlib import asynccontextmanager
 import json
+import asyncio
 from .firebase import firebase, notifications
-from .request import _send_request
+from .request import Request, _send_request
 from .tools import file
 
 credentials_path = file.path("firebase/credentials.json")
 
-def send(request_name: str, body: dict = {}, data_output: tuple = ()) -> dict:
+async def send(request: Union[tuple[Request], Request, str], body: dict = {}, data_output: tuple = ()) -> dict:
     """
-    Send a request.
+    Send request(s) asynchronously.
     """
     
-    return _send_request(request_name, body, data_output)
+    if isinstance(request, tuple):
+        tasks = []
+        for req in request:
+            task = asyncio.create_task(_send_request(req))
+            tasks.append(task)
+        return await asyncio.gather(*tasks)
+    else:
+        return await _send_request(request, body, data_output)
 
 def login(email: str, password: str) -> firebase.FirebaseLogin:
     """
@@ -22,7 +32,7 @@ def login(email: str, password: str) -> firebase.FirebaseLogin:
     fb_login.start()
     return fb_login
 
-def ntoken() -> notifications.GCM:
+def token() -> notifications.GCM:
     """
     Get FCM token for receiving notifications.
     """
@@ -57,12 +67,31 @@ def ntoken() -> notifications.GCM:
     
     return gcm
 
-def nlisten(gcm: notifications.GCM, func):
+async def listen(gcm: notifications.GCM, func):
     """
     Listen for notifications.
     """
     
     notifications._optional_dependencies_check()
-    notifications._login(gcm)
-    thr = Thread(target = notifications._listen, args = (gcm, func))
-    thr.start()
+    await notifications._login(gcm)
+    asyncio.create_task(notifications._listen(gcm, func, None))
+
+@asynccontextmanager
+async def wait(gcm: notifications.GCM, json_filter: dict = {}, timeout: float = None) -> dict:
+    """
+    Wait for notification.
+    """
+    
+    try:
+        notifications._optional_dependencies_check()
+        await notifications._login(gcm)
+        if timeout:
+            try:
+                yield await asyncio.wait_for(notifications._listen(gcm, None, json_filter), timeout)
+            except asyncio.TimeoutError:
+                await notifications._aclose(gcm._writer)
+                raise
+        else:
+            yield await notifications._listen(gcm, None, json_filter)
+    finally:
+        pass

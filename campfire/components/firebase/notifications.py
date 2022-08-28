@@ -9,6 +9,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 import socket
 import ssl
+import asyncio
 
 try:
     from .proto.mcs_pb2 import *
@@ -69,10 +70,21 @@ if _optional_dependencies:
     )
 
 MT_HOST = "mtalk.google.com"
-_sock = None
+
+def dict_walk(inner: dict, pre: list = None):
+    pre = pre[:] if pre else []
+    if isinstance(inner, dict):
+        for key, value in inner.items():
+            if isinstance(value, dict):
+                for ret in dict_walk(value, pre + [key]):
+                    yield ret
+            else:
+                yield pre + [key, value]
+    else:
+        yield pre + [inner]
 
 class GCM:
-    __slots__ = ("exists", "fcm", "_token", "_android_id", "_security_token", "_keys")
+    __slots__ = ("exists", "fcm", "_token", "_android_id", "_security_token", "_keys", "_reader", "_writer")
 
 def encode32(x: int) -> bytes:
     res = bytearray([])
@@ -84,11 +96,22 @@ def encode32(x: int) -> bytes:
         res.append(b)
     return bytes(res)
 
-def read32() -> int:
+def read32(sock: socket.socket) -> int:
     res = 0
     shift = 0
     while True:
-        b, = struct.unpack("B", _recv(1))
+        b, = struct.unpack("B", _recv(sock, 1))
+        res |= (b & 0x7f) << shift
+        if (b & 0x80) == 0:
+            break
+        shift += 7
+    return res
+
+async def aread32(reader: asyncio.StreamReader) -> int:
+    res = 0
+    shift = 0
+    while True:
+        b, = struct.unpack("B", await _arecv(reader, 1))
         res |= (b & 0x7f) << shift
         if (b & 0x80) == 0:
             break
@@ -116,7 +139,7 @@ def _gcm_checkin() -> dict:
     payload.checkin.CopyFrom(checkin)
     payload.version = 3
     
-    resp = urlopen(Request(url = CHECKIN_URL, headers = {"Content-Type": "application/x-protobuf"}, data = payload.SerializeToString()), timeout = 5)
+    resp = urlopen(Request(url = CHECKIN_URL, headers = {"Content-Type": "application/x-protobuf"}, data = payload.SerializeToString()), timeout = Config.Client.timeout)
     p = AndroidCheckinResponse()
     p.ParseFromString(resp.read())
     resp.close()
@@ -137,7 +160,8 @@ def _gcm_register() -> GCM:
     resp = urlopen(Request(
         url = REGISTER_URL,
         headers = {"Authorization": auth},
-        data = bytes(data, "utf8")
+        data = bytes(data, "utf8"),
+        timeout = Config.Client.timeout
     ))
     rdata = resp.read().decode("utf8")
     resp.close()
@@ -152,13 +176,6 @@ def _gcm_register() -> GCM:
     return gcm
 
 def _register(gcm: GCM) -> Union[GCM, None]:
-    global _sock
-    if _sock == None:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        context = ssl.create_default_context()
-        _sock = context.wrap_socket(s, server_hostname=MT_HOST)
-        _sock.connect((MT_HOST, 5228))
-    
     if not hasattr(gcm, "_keys"):
         public_key, private_key = generate_pair("ec", curve = "secp256r1")
         keys = {
@@ -176,7 +193,7 @@ def _register(gcm: GCM) -> Union[GCM, None]:
     }), "ascii")
     
     try:
-        resp = urlopen(Request(url = FCM_SUBSCRIBE, data = data), timeout = 5)
+        resp = urlopen(Request(url = FCM_SUBSCRIBE, data = data), timeout = Config.Client.timeout)
     except HTTPError:
         return None
     rdata = json.loads(resp.read())
@@ -185,7 +202,7 @@ def _register(gcm: GCM) -> Union[GCM, None]:
     gcm.fcm = rdata["token"]
     return gcm
 
-def _login(gcm: GCM):
+async def _login(gcm: GCM):
     p = LoginRequest()
     p.adaptive_heartbeat = False
     p.auth_service = 2
@@ -199,14 +216,34 @@ def _login(gcm: GCM):
     p.use_rmq2 = True
     p.setting.add(name = "new_vc", value = "1")
     p.received_persistent_id.extend(())
-    _send_packet(p)
-    resp = _recv_packet(True)
+    
+    # never do this:
+    # s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # context = ssl.create_default_context()
+    # sock = context.wrap_socket(s, server_hostname=MT_HOST)
+    # sock.connect((MT_HOST, 5228))
+    # reader, writer = await asyncio.open_connection(sock = sock)
+    
+    context = ssl.create_default_context()
+    reader, writer = await asyncio.open_connection(
+        MT_HOST, 5228,
+        server_hostname = MT_HOST,
+        family = socket.AF_INET,
+        ssl = context
+    )
+    gcm._reader = reader
+    gcm._writer = writer
+    
+    await _asend_packet(writer, p)
+    resp = await _arecv_packet(reader, True)
 
-def _listen(gcm: GCM, func):
+async def _listen(gcm: GCM, func = None, json_filter = None):
+    random_code = None
     while True:
         try:
-            p = _recv_packet()
+            p = await _arecv_packet(gcm._reader)
             if type(p) == DataMessageStanza:
+                if len(p.raw_data) == 0: continue
                 crypto_key = bytes(app_data_by_key(p, "crypto-key")[3:], "ascii")
                 salt = bytes(app_data_by_key(p, "encryption")[5:], "ascii")
                 crypto_key = base64.urlsafe_b64decode(crypto_key)
@@ -226,54 +263,76 @@ def _listen(gcm: GCM, func):
                     version = "aesgcm",
                     auth_secret = secret
                 ).decode("utf8")
-                func(json.loads(decrypted))
+                data = json.loads(json.loads(decrypted)["data"]["my_data"])
+                if data["randomCode"] == random_code: continue
+                random_code = data["randomCode"]
+                
+                if func:
+                    await func(data)
+                else:
+                    if json_filter:
+                        c = False
+                        total = 0
+                        confirms = 0
+                        for x in dict_walk(json_filter):
+                            total += 1
+                            for y in dict_walk(data):
+                                if x[:-1] == y[:-1]:
+                                    if x[-1] != y[-1]:
+                                        c = True
+                                        break
+                                    else:
+                                        confirms += 1
+                            if c: break
+                        if confirms < total: c = True
+                        if c: continue
+                    _aclose(gcm._writer)
+                    return data
             elif type(p) == HeartbeatPing:
                 req = HeartbeatAck()
                 req.stream_id = p.stream_id + 1
                 req.last_stream_id_received = p.stream_id
                 req.status = p.status
-                _send_packet(req)
+                await _asend_packet(gcm._writer, req)
+            elif p == None or type(p) == Close:
+                _aclose(gcm._writer)
+                gcm = _login(gcm)
         except ConnectionResetError:
-            return
+            gcm = _login(gcm)
 
-def _send_packet(packet):
+async def _asend_packet(writer: asyncio.StreamWriter, packet):
     header = bytearray((MCS_VERSION, MCS_PACKETS.index(type(packet))))
     payload = packet.SerializeToString()
     buf = bytes(header) + encode32(len(payload)) + payload
     
-    buf_length = len(buf)
-    sent = 0
-    while sent < buf_length:
-        _sock.settimeout(Config.Client.timeout)
-        sdata_length = _sock.send(buf[sent:sent + Config.Client.data_chunk_size] if buf_length - sent > Config.Client.data_chunk_size else buf)
-        if not sdata_length:
-            if sent > 0:
-                break
-            raise ConnectionError("Connection closed while sending packet")
-        sent += sdata_length
+    writer.write(buf)
+    await writer.drain()
+    return
 
-def _recv_packet(ver: bool = False) -> Union[bytes, None]:
+async def _arecv_packet(reader: asyncio.StreamReader, ver: bool = False) -> Union[bytes, None]:
     if ver:
-        version, tag = struct.unpack("BB", _recv(2))
+        version, tag = struct.unpack("BB", await _arecv(reader, 2))
         if version < MCS_VERSION:
             raise ValueError("Unsupported protocol version: " + version)
     else:
-        tag, = struct.unpack("B", _recv(1))
-    size = read32()
+        tag, = struct.unpack("B", await _arecv(reader, 1))
+    size = await aread32(reader)
     if size >= 0:
-        buf = _recv(size)
+        buf = await _arecv(reader, size)
         p = MCS_PACKETS[tag]
         payload = p()
         payload.ParseFromString(buf)
         return payload
     return None
 
-def _recv(size: bytes) -> bytes:
+async def _arecv(reader: asyncio.StreamReader, size: bytes) -> bytes:
     data = bytes()
     received = 0
     while received < size:
-        _sock.settimeout(None)
-        rdata = _sock.recv(Config.Client.data_chunk_size if size - received > Config.Client.data_chunk_size else size - received)
+        rdata = await reader.read(Config.Client.data_chunk_size if size - received > Config.Client.data_chunk_size else size - received)
         received += len(rdata)
         data += rdata
     return data
+
+def _aclose(stream: asyncio.StreamWriter):
+    stream.close()

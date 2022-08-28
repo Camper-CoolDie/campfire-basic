@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "campfire-basic"
-version = "1.0.0"
+version = "1.1.0"
 description = "Campfire API basic functions"
 authors = [
     { name = "Camper-CoolDie", email = "campercooldie@gmail.com" }
@@ -20,7 +20,7 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/Camper-CoolDie/campfire-api"
+"Homepage" = "https://github.com/Camper-CoolDie/campfire-basic"
 
 [project.optional-dependencies]
 notifications = [

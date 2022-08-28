@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "campfire-basic"
-version = "1.1.0"
+version = "1.1.1"
 description = "Campfire API basic functions"
 authors = [
     { name = "Camper-CoolDie", email = "campercooldie@gmail.com" }
@@ -13,7 +13,10 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.7"
 classifiers = [
+    "Programming Language :: Python :: 3."
     "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Typing :: Typed"

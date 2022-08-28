@@ -11,6 +11,13 @@ import socket
 import ssl
 import asyncio
 
+
+_notifications_dependencies = (
+    "cryptography>=3.1",
+    "oscrypto",
+    "http_ece",
+    "protobuf<=3.20"
+)
 try:
     from .proto.mcs_pb2 import *
     from .proto.android_checkin_pb2 import *
@@ -31,7 +38,7 @@ from ..exceptions import ApiException
 
 def _optional_dependencies_check():
     if not _optional_dependencies:
-        raise ImportError("4 dependencies are requried for \"notifications\" module: %s" % ", ".join(("cryptography", "oscrypto", "http_ece", "protobuf")))
+        raise ImportError("4 dependencies are requried for \"notifications\" module.\n\nSimply run this pip command to install:\npip install --upgrade " + " ".join(_notifications_dependencies))
 
 def urlsafe(data: bytes) -> str:
     return str(base64.urlsafe_b64encode(data).replace(b"=", b"").replace(b"\n", b""), "ascii")
@@ -160,14 +167,13 @@ def _gcm_register() -> GCM:
     resp = urlopen(Request(
         url = REGISTER_URL,
         headers = {"Authorization": auth},
-        data = bytes(data, "utf8"),
-        timeout = Config.Client.timeout
-    ))
+        data = bytes(data, "utf8")
+    ), timeout = Config.Client.timeout)
     rdata = resp.read().decode("utf8")
     resp.close()
     
-    if "Error" in rdata:
-        raise ApiException("Error occured while authorization")
+    if "Error=" in rdata:
+        raise ApiException("Error occured while authorization (\"%s\")" % rdata[6:])
     token = rdata.split("=")[1]
     gcm = GCM()
     gcm._token = token

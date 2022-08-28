@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Tuple
 from threading import Thread, Event
 from hashlib import sha512
 from urllib.request import Request as _Request, urlopen
@@ -40,7 +40,7 @@ class FirebaseLogin(Thread):
                     headers = headers,
                     data = body
                 ))
-            except HTTPError as e:
+            except HTTPError:
                 self._error = True
                 self._token_changed_event.set()
                 raise ApiLoginException
@@ -66,7 +66,7 @@ class FirebaseLogin(Thread):
         
         return "Email2 - " + self._id_token
     
-    async def send(self, request: Union[tuple[Request], Request, str], body: dict = {}, data_output: tuple = ()) -> dict:
+    async def send(self, request: Union[Tuple[Request], Request, str], body: dict = {}, data_output: tuple = ()) -> dict:
         """
         Send request(s) asynchronously.
         """

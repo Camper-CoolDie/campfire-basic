@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Tuple
 from threading import Thread
 from contextlib import asynccontextmanager
 import json
@@ -9,7 +9,7 @@ from .tools import file
 
 credentials_path = file.path("firebase/credentials.json")
 
-async def send(request: Union[tuple[Request], Request, str], body: dict = {}, data_output: tuple = ()) -> dict:
+async def send(request: Union[Tuple[Request], Request, str], body: dict = {}, data_output: tuple = ()) -> dict:
     """
     Send request(s) asynchronously.
     """

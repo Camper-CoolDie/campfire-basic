@@ -7,5 +7,5 @@ class ApiRequestException(ApiException):
         super().__init__("Error occurred while processing request (\"%s\")" % errorCode)
 
 class ApiLoginException(ApiException):
-    def __init__(self):
-        super().__init__("Could not login")
+    def __init__(self, msg: str):
+        super().__init__("Could not login: " + msg)

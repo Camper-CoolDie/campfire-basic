@@ -40,10 +40,11 @@ class FirebaseLogin(Thread):
                     headers = headers,
                     data = body
                 ))
-            except HTTPError:
+            except HTTPError as e:
                 self._error = True
                 self._token_changed_event.set()
-                raise ApiLoginException
+                msg = json.loads(e.read())["error"]["message"]
+                raise ApiLoginException(msg)
             
             rdata = json.loads(resp.read())
             resp.close()
@@ -66,16 +67,16 @@ class FirebaseLogin(Thread):
         
         return "Email2 - " + self._id_token
     
-    async def send(self, request: Union[Tuple[Request], Request, str], body: dict = {}, data_output: tuple = ()) -> dict:
+    async def send(self, request: Union[Tuple[Request], Request, str], body: dict = {}, data_output: tuple = (), server: int = 0) -> Union[dict, bytes]:
         """
-        Send request(s) asynchronously.
+        Send request(s) asynchronously. Return type will be bytes if server's return is not in JSON format.
         """
         
         if isinstance(request, tuple):
             tasks = []
             for req in request:
-                task = asyncio.create_task(_send_request(req, token = self.token))
+                task = asyncio.create_task(_send_request(req, token = self.token, server = server))
                 tasks.append(task)
             return await asyncio.gather(*tasks)
         else:
-            return await _send_request(request, body, data_output, self.token)
+            return await _send_request(request, body, data_output, self.token, server = server)

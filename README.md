@@ -1,6 +1,6 @@
 This module includes several basic functions for asynchronously
-sending and receiving data from Campfire server. It can also
-receive push notifications.
+*communicating* with Campfire server. It can also
+receive push notifications. To learn what requests you can send, visit https://github.com/ZeonXX/CampfireApi/tree/master/src/main/java/com/dzen/campfire/api/requests
 
 [![campfire-basic PyPI](https://img.shields.io/pypi/v/campfire-basic.svg)](https://pypi.org/project/campfire-basic) 
 
@@ -12,7 +12,7 @@ Using `pip` command:
 pip install campfire-basic
 ```
 
-Clone this repository using `git` command:
+Or, clone this repository using `git` command:
 
 ```
 git clone https://github.com/Camper-CoolDie/campfire-basic
@@ -33,12 +33,15 @@ async def main():
 asyncio.run(main())
 ```
 
-Code above gets current version of Campfire.
+The code above gets the current version of Campfire server and shows it.
 
 ## Log in
 
-A lot of requests will raise exception if user is not
-logged in.
+Certain types of requests will raise an exception if you're not
+logged in. To proceed with those requests, you need to authorize first.
+In this module, this can be done via calling the `login()` function,
+and to send the request as an authorized user, call the `send()` method of
+a returned object.
 
 ```py
 import campfire
@@ -63,33 +66,35 @@ asyncio.run(main())
 
 ## Receiving notifications
 
-You can receive all notifications Campfire server sending
-to you.
+You can receive every notification Campfire server sends
+to you, or only a certain type.
 
 ```py
 import campfire
+import asyncio
 
 log = campfire.login("email", "password")
 
-# Generate FCM token
+# Generate GCM token, which contains a FCM token we need
 token = campfire.token()
 
 async def main():
-    # Send token to Campfire server if it is not added
-    if not token.exists():
-        await log.send("RAccountsAddNotificationsToken", {"token": ntoken.fcm})
+    # Send the token to Campfire server
+    await log.send("RAccountsAddNotificationsToken", {"token": token.fcm})
     
     # Listen to notifications
     def notifi(n):
         print(notifi)
+
+    # The "final point" where our program will continue listening to notifications
+    # until we press Ctrl + C or some unexpected exception happens;
+    # if you want to wait for a single notification, see the next example
     await campfire.listen(token, notifi)
-    
-    print("It works asynchronously!")
 
 asyncio.run(main())
 ```
 
-Or, wait for notification:
+Or, wait for a notification:
 
 ```py
 import campfire
@@ -99,14 +104,13 @@ log = campfire.login("email", "password")
 token = campfire.token()
 
 async def main():
-    if not token.exists():
-        await log.send("RAccountsAddNotificationsToken", {"token": token})
+    await log.send("RAccountsAddNotificationsToken", {"token": token.fcm})
     
-    # Wait for notification
+    # Wait for a notification
     async with campfire.wait(token) as n:
         print(n)
     
-    # With filter (wait for subscriber)
+    # With filter (wait for a subscriber)
     async with campfire.wait(token, {"J_N_TYPE": 4}) as n:
         print(n["account"]["J_NAME"])
     
@@ -116,6 +120,27 @@ async def main():
             print(n)
     except asyncio.TimeoutError:
         print("Time is out")
+
+asyncio.run(main())
+```
+
+## Getting a resource
+
+You can also request Campfire to get a picture or another sort of a
+resource. This can be done almost the same way we request the main
+server. To request Media server, if you prefer requesting using
+Request class, just replace it with "RequestMedia". Or add a "server = 1"
+argument to the `send()` function. Returning value will be of type `bytes`
+if `RResourcesGet` request sent.
+
+```py
+import campfire
+import asyncio
+
+async def main():
+    res = await campfire.send("RResourceGet", {"resourceId": 1}, server = 1)
+    print(len(res))
+    # The length of res will be printed
 
 asyncio.run(main())
 ```

@@ -32,36 +32,69 @@ class Request:
         
         return body, extra
 
-async def _send_request(request: Union[Request, str], body: dict = {}, data_output: tuple = (), token: str = None) -> dict:
+class RequestMedia(Request):
+    def _parse(self, token: str = None) -> dict:
+        return super()._parse(None)
+
+async def _send_request(request: Union[Request, str], body: dict = {}, data_output: tuple = (), token: str = None, *, server: int = 0) -> Union[dict, bytes]:
     if not isinstance(request, Request):
-        request = Request(request, body, data_output)
+        if (server == 0):
+            request = Request(request, body, data_output)
+        elif (server == 1):
+            request = RequestMedia(request, body, data_output)
+        else:
+            raise NameError("Unknown server: " + str(server))
+    elif isinstance(request, RequestMedia):
+        server = 1
+    else:
+        server = 0
     
     body, extra = request._parse(token)
-    data = json.loads(await _create_request(bytes(json.dumps(body, separators = (",", ":")), "utf8") + extra))
+    data = await _create_request(bytes(json.dumps(body, separators = (",", ":")), "utf8") + extra, server)
     
-    if data["J_STATUS"] == "J_STATUS_ERROR":
-        raise ApiRequestException(data["J_RESPONSE"]["code"])
-    
-    return data["J_RESPONSE"]
+    if data[0] == "{":
+        data = json.loads(data)
+        if data["J_STATUS"] == "J_STATUS_ERROR":
+            raise ApiRequestException(data["J_RESPONSE"]["code"])
+        return data["J_RESPONSE"]
+    else:
+        return data
 
-async def _create_request(body: bytes) -> bytes:
+async def _create_request(body: bytes, server) -> bytes:
     if Config.Client.https:
         context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         context.load_verify_locations(file.path("cert.pem"))
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(
-            Config.Server.ip,
-            Config.Server.port_https,
-            server_hostname = Config.Server.hostname,
-            family = socket.AF_INET,
-            ssl = context
-        ), timeout = Config.Client.timeout)
+        if (server == 0):
+            reader, writer = await asyncio.wait_for(asyncio.open_connection(
+                Config.Server.ip,
+                Config.Server.port_https,
+                server_hostname = Config.Server.hostname,
+                family = socket.AF_INET,
+                ssl = context
+            ), timeout = Config.Client.timeout)
+        else:
+            reader, writer = await asyncio.wait_for(asyncio.open_connection(
+                Config.ServerMedia.ip,
+                Config.ServerMedia.port_https,
+                server_hostname = Config.ServerMedia.hostname,
+                family = socket.AF_INET,
+                ssl = context
+            ), timeout = Config.Client.timeout)
     else:
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(
-            Config.Server.ip,
-            Config.Server.port_http,
-            server_hostname = Config.Server.hostname,
-            family = socket.AF_INET
-        ), timeout = Config.Client.timeout)
+        if (server == 0):
+            reader, writer = await asyncio.wait_for(asyncio.open_connection(
+                Config.Server.ip,
+                Config.Server.port_http,
+                server_hostname = Config.Server.hostname,
+                family = socket.AF_INET
+            ), timeout = Config.Client.timeout)
+        else:
+            reader, writer = await asyncio.wait_for(asyncio.open_connection(
+                Config.ServerMedia.ip,
+                Config.ServerMedia.port_http,
+                server_hostname = Config.ServerMedia.hostname,
+                family = socket.AF_INET
+            ), timeout = Config.Client.timeout)
     
     await _send(writer, len(body).to_bytes(4, "big") + body)
     

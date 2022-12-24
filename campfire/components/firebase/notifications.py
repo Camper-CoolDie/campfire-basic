@@ -91,7 +91,7 @@ def dict_walk(inner: dict, pre: list = None):
         yield pre + [inner]
 
 class GCM:
-    __slots__ = ("exists", "fcm", "_token", "_android_id", "_security_token", "_keys", "_reader", "_writer")
+    __slots__ = ("fcm", "_token", "_android_id", "_security_token", "_keys", "_reader", "_writer")
 
 def encode32(x: int) -> bytes:
     res = bytearray([])
@@ -102,17 +102,6 @@ def encode32(x: int) -> bytes:
             b |= 0x80
         res.append(b)
     return bytes(res)
-
-def read32(sock: socket.socket) -> int:
-    res = 0
-    shift = 0
-    while True:
-        b, = struct.unpack("B", _recv(sock, 1))
-        res |= (b & 0x7f) << shift
-        if (b & 0x80) == 0:
-            break
-        shift += 7
-    return res
 
 async def aread32(reader: asyncio.StreamReader) -> int:
     res = 0
@@ -244,7 +233,10 @@ async def _login(gcm: GCM):
     resp = await _arecv_packet(reader, True)
 
 async def _listen(gcm: GCM, func = None, json_filter = None):
+    # an unique (most likely) code which generates randomly for each notification server sends;
+    # helps to avoid duplicate notifications
     random_code = None
+
     while True:
         try:
             p = await _arecv_packet(gcm._reader)

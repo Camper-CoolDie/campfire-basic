@@ -10,6 +10,12 @@
         "portHttp": 4028,
         "hostname": "campfiresayzen.net"
     },
+    "server_media": {
+        "ip": "46.254.16.245",
+        "portHttps": 4023,
+        "portHttp": 4022,
+        "hostname": "campfiresayzen.net"
+    },
     "firebase": {
         "apiKey": "AIzaSyACrbV2hnCsYZmdzAa7-8M5eaZUWYiXd5c",
         "projectId": "campfire-2fb33",

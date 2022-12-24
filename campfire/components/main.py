@@ -4,28 +4,28 @@ from contextlib import asynccontextmanager
 import json
 import asyncio
 from .firebase import firebase, notifications
-from .request import Request, _send_request
+from .request import Request, RequestMedia, _send_request
 from .tools import file
 
 credentials_path = file.path("firebase/credentials.json")
 
-async def send(request: Union[Tuple[Request], Request, str], body: dict = {}, data_output: tuple = ()) -> dict:
+async def send(request: Union[Tuple[Request], Request, str], body: dict = {}, data_output: tuple = (), *, server: int = 0) -> Union[dict, bytes]:
     """
-    Send request(s) asynchronously.
+    Send request(s) asynchronously. Return type will be bytes if server's return is not in JSON format.
     """
     
     if isinstance(request, tuple):
         tasks = []
         for req in request:
-            task = asyncio.create_task(_send_request(req))
+            task = asyncio.create_task(_send_request(req, server = server))
             tasks.append(task)
         return await asyncio.gather(*tasks)
     else:
-        return await _send_request(request, body, data_output)
+        return await _send_request(request, body, data_output, server = server)
 
 def login(email: str, password: str) -> firebase.FirebaseLogin:
     """
-    Login in Campfire using Firebase.
+    Login in to Campfire using Firebase.
     """
     
     fb_login = firebase.FirebaseLogin(email, password)
@@ -34,7 +34,7 @@ def login(email: str, password: str) -> firebase.FirebaseLogin:
 
 def token() -> notifications.GCM:
     """
-    Get FCM token for receiving notifications.
+    Get GCM token for receiving notifications.
     """
     
     notifications._optional_dependencies_check()
@@ -50,7 +50,6 @@ def token() -> notifications.GCM:
             gcm._security_token = credentials["securityToken"]
             gcm._keys = credentials["keys"]
             gcm = notifications._register(gcm)
-            gcm.exists = True
             credentials_exists = True
         except Exception:
             pass
@@ -63,7 +62,6 @@ def token() -> notifications.GCM:
             "securityToken": gcm._security_token,
             "keys": gcm._keys
         }, separators = (",", ":")), "ascii"))
-        gcm.exists = False
     
     return gcm
 
@@ -74,12 +72,12 @@ async def listen(gcm: notifications.GCM, func):
     
     notifications._optional_dependencies_check()
     await notifications._login(gcm)
-    asyncio.create_task(notifications._listen(gcm, func, None))
+    await asyncio.create_task(notifications._listen(gcm, func, None))
 
 @asynccontextmanager
 async def wait(gcm: notifications.GCM, json_filter: dict = {}, timeout: float = None) -> dict:
     """
-    Wait for notification.
+    Wait for a notification.
     """
     
     try:

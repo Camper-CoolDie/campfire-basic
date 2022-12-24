@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "campfire-basic"
-version = "1.1.1"
+version = "1.1.2"
 description = "Campfire API basic functions"
 authors = [
     { name = "Camper-CoolDie", email = "campercooldie@gmail.com" }

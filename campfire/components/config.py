@@ -20,6 +20,14 @@ class Config:
         port_https: int = _config["server"]["portHttps"]
         port_http: int = _config["server"]["portHttp"]
         hostname: str = _config["server"]["hostname"]
+
+    class ServerMedia:
+        __slots__ = ()
+
+        ip: str = _config["server_media"]["ip"]
+        port_https: int = _config["server_media"]["portHttps"]
+        port_http: int = _config["server_media"]["portHttp"]
+        hostname: str = _config["server_media"]["hostname"]
     
     class Firebase:
         __slots__ = ()
